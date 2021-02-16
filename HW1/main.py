@@ -1,9 +1,13 @@
+# Devon Callanan
+# University of Pittsburgh
+# CS2770 - Homework 1
+
+
 from PIL import Image
 import numpy
+from multiprocessing import Pool
 from scipy import io, ndimage
 import matplotlib.pyplot as plt
-
-
 
 # PART A
 def partA():
@@ -12,7 +16,7 @@ def partA():
                     "panda1.jpg", "panda2.jpg"]
 
 
-    images = [Image.open(name).resize((100,100)).convert(mode="L") for name in image_names]
+    images = [numpy.array(Image.open(name).resize((100,100)).convert(mode="L"), dtype='int64') for name in image_names]
 
     # filters consists of 48 filters fo size 49x49
     filters = numpy.array(io.loadmat("filters.mat")["F"]).T
@@ -35,20 +39,29 @@ def partA():
 
     return images, filters, responses
 
+# partA()
 # PART B
 
+def conv(arg):
+    im, filt = arg
+    return ndimage.convolve(im, filt).flatten()
+
 def computeTextureReprs(image, F):
-    image = Image.open(image).resize((100,100)).convert(mode="L")
-    num_rows, num_cols = image.size
+    # image = numpy.array(Image.open(image).resize((200,200)).convert(mode="L"), dtype='int64')
+    # num_rows, num_cols = image.shape
+    image = numpy.array(Image.open(image).resize((200,200)).convert(mode="L"), dtype='uint8')
+    num_rows, num_cols = image.shape
     responses = []
-    for filter in F:
-        res = ndimage.convolve(image, filter).flatten()
-        responses.append(res)
+    args = [(image, filter) for filter in F]
+    # replace with thread pool for SPEED
+    with Pool(8) as p:
+        responses = p.map(conv, args)
+    # for filter in F:
+    #     res = ndimage.convolve(image, filter).flatten()
+    #     responses.append(res)
     texture_repr_concat = numpy.concatenate(responses)
     texture_repr_mean = numpy.mean(responses, axis=1)
 
-    # print(texture_repr_mean.shape)
-    # print(texture_repr_concat.shape)
     return texture_repr_concat, texture_repr_mean
 
     return None
@@ -62,18 +75,18 @@ def partB():
 
     for image in image_names:
         computeTextureReprs(image, filters)
-        quit()
+
 
 
 # Part C
 def partC():
     image_names = [ "baby_happy.jpg", "baby_weird.jpg"]
     #read images, convert to 100x100 greyscale using PIL
-    im1 = Image.open(image_names[0]).resize((512,512)).convert(mode="L")
-    im2 = Image.open(image_names[1]).resize((512,512)).convert(mode="L")
+    im1 = numpy.array(Image.open("baby_happy.jpg").resize((200,200)).convert(mode="L"), dtype='int64')
+    im2 = numpy.array(Image.open("baby_weird.jpg").resize((200,200)).convert(mode="L"), dtype='int64')
 
-    im1_blur = ndimage.gaussian_filter(im1, 7)
-    im2_blur = ndimage.gaussian_filter(im2, 8)
+    im1_blur = ndimage.gaussian_filter(im1, 2)
+    im2_blur = ndimage.gaussian_filter(im2, 2)
     im2_detail = im2_blur - im2
     # axs = plt.imshow(im1_blur, cmap="gray", vmin=0, vmax=255)
     # plt.show()
@@ -84,11 +97,39 @@ def partC():
     axs = plt.imshow(hybrid, cmap="gray", vmin=0, vmax=255)
     plt.savefig("./hybrid.png")
 
+# partC()
 # Pard D
 
+def harris(args):
+    i,rows,cols,Ix,Iy = args
+    row = numpy.zeros(cols)
+    for j in range(cols):
+        # if a pixel is less than 2 pixels from the top/left or 2 pixels
+        # from the bottom/right of the image, set its R score to 0
+        if i < 2 or j < 2:
+            row[j] = 0
+            continue
+        if i >= rows-2 or j >= cols-2:
+            row[j] = 0
+            continue
+        # compute matrix for each pixel in window
+        M = numpy.zeros((2,2))
+        for ii in range(5):
+            for jj in range(5):
+                ix = Ix[i-2 + ii][j - 2 + jj]
+                iy = Iy[i-2 + ii][j - 2 + jj]
+                M += numpy.array(   [[ix*ix, ix*iy],
+                                    [ix*iy, iy*iy]])
+
+            row[j] = numpy.abs(numpy.linalg.det(M) - .05*(numpy.trace(M)**2))
+
+    return row
+
+
 def extract_keypoints(image):
+    image_name = image
     # greyscale
-    image_orig = numpy.array(Image.open(image).resize((100,100)).convert(mode="L"), dtype='int64')
+    image_orig = numpy.array(Image.open(image).resize((200,200)).convert(mode="L"), dtype='int32')
     # image_orig = numpy.array(Image.open(image).resize((200,200)).convert(mode="L"))
     image = image_orig# -128
     rows, cols = image.shape
@@ -100,36 +141,40 @@ def extract_keypoints(image):
 
     R = numpy.zeros((rows,cols))
 
+    args = [(i, rows, cols, Ix, Iy) for i in range(rows)]
+    # replace with thread pool for SPEED
+    with Pool(8) as p:
+        R = numpy.array(p.map(harris, args))
     # iterate throught image to compute r score at each pixel
-    for i in range(rows):
-        for j in range(cols):
-            # if a pixel is less than 2 pixels from the top/left or 2 pixels
-            # from the bottom/right of the image, set its R score to 0
-            if i < 2 or j < 2:
-                R[i][j] = 0
-                continue
-            if i >= rows-2 or j >= cols-2:
-                R[i][j] = 0
-                continue
-            # compute matrix for each pixel in window
-            M = numpy.zeros((2,2))
-            for ii in range(win_size):
-                for jj in range(win_size):
-                    ix = Ix[i-2 + ii][j - 2 + jj]
-                    iy = Iy[i-2 + ii][j - 2 + jj]
-                    M += numpy.array(   [[ix*ix, ix*iy],
-                                        [ix*iy, iy*iy]])
-
-            R[i][j] = numpy.abs(numpy.linalg.det(M) - k*(numpy.trace(M)**2))
+    # for i in range(rows):
+    #     for j in range(cols):
+    #         # if a pixel is less than 2 pixels from the top/left or 2 pixels
+    #         # from the bottom/right of the image, set its R score to 0
+    #         if i < 2 or j < 2:
+    #             R[i][j] = 0
+    #             continue
+    #         if i >= rows-2 or j >= cols-2:
+    #             R[i][j] = 0
+    #             continue
+    #         # compute matrix for each pixel in window
+    #         M = numpy.zeros((2,2))
+    #         for ii in range(win_size):
+    #             for jj in range(win_size):
+    #                 ix = Ix[i-2 + ii][j - 2 + jj]
+    #                 iy = Iy[i-2 + ii][j - 2 + jj]
+    #                 M += numpy.array(   [[ix*ix, ix*iy],
+    #                                     [ix*iy, iy*iy]])
+    #
+    #         R[i][j] = numpy.abs(numpy.linalg.det(M) - k*(numpy.trace(M)**2))
 
     avg_rscore = R.mean()
     top_scores = []
 
-    # find top 1% of key points
+    # find top points
     for y in range(cols):
         for x in range(rows):
             score = R[x][y]
-            if score > avg_rscore*4:
+            if score > avg_rscore*.5:
                 # non-max suppresion
                 max = True
                 for i in [-1,0,1]:
@@ -137,7 +182,7 @@ def extract_keypoints(image):
                         if R[(x+i)%rows][(y+j)%cols] > score:
                             max = False
                 if max:
-                    top_scores.append((x,y, score))
+                    top_scores.append((y,x, score))
 
     # fig, axs = plt.subplots(2,3)
     # axs[0,0].imshow(Ix, cmap="gray")
@@ -147,7 +192,10 @@ def extract_keypoints(image):
     # for x,y,score in top_scores:
     #     rad=numpy.log(score/(5*avg_rscore))
     #     axs[1,1].plot(x,y, 'o', ms=rad*5, mec='g', mfc='none', mew=1)
+    # # plt.savefig("vis3.png")
     # plt.show()
+
+    print("Keypoints for " + image_name + ": " +str(len(top_scores)))
 
     y = [y for x,y,score in top_scores]
     x = [x for x,y,score in top_scores]
@@ -157,7 +205,7 @@ def extract_keypoints(image):
     return x,y,scores,Ix,Iy
 
 def partD():
-    extract_keypoints("house.jpg")
+    extract_keypoints("cardinal2.jpg")
     return None
 
 # partD()
@@ -190,7 +238,7 @@ def compute_features(x,y,scores, Ix, Iy):
                 # quantize
                 # print(angle)
                 # print(numpy.floor(numpy.interp(angle, [-numpy.pi, numpy.pi], [0,7])))
-                bin = int(numpy.floor(numpy.interp(angle, [0, numpy.pi], [0,7])))
+                bin = int(numpy.floor(numpy.interp(angle, [-numpy.pi, numpy.pi], [0,7.99])))
                 desc[bin] += m
         # norm, clip and norm
         desc = desc/desc.sum()
@@ -227,8 +275,7 @@ def computeBOWRepr(features, means):
     return bow
 
 def partF():
-    means = numpy.array(io.loadmat("means_k50.mat")["means"])
-
+    means = numpy.array(io.loadmat("means_k20.mat")["means"])
 
 
     x,y,scores,Ix,Iy = extract_keypoints("cardinal1.jpg")
@@ -274,7 +321,6 @@ def partF():
     print(dist_leopand)
     print(dist_pandcard)
 
-    # print(means)
 
 # partF()
 
@@ -316,8 +362,6 @@ def partG():
         tex_concat_reprs.append(con)
         tex_mean_reprs.append(mea)
 
-    print("bows found")
-    # print(bow_reprs)
     for i in range(len(bow_reprs)):
         label = bow_reprs[i]
         for j in range(len(label)):
@@ -340,77 +384,13 @@ def partG():
                         between_mean.append(numpy.linalg.norm(other_mean-mean))
 
 
-    print(numpy.array(within_bow).mean())
-    print(numpy.array(between_bow).mean())
-    print(numpy.array(within_concat).mean())
-    print(numpy.array(between_concat).mean())
-    print(numpy.array(within_mean).mean())
-    print(numpy.array(between_mean).mean())
+    print("bow " + str(numpy.array(within_bow).mean()/numpy.array(between_bow).mean()))
+    # print(numpy.array(between_bow).mean())
+    print("concat " + str(numpy.array(within_concat).mean()/numpy.array(between_concat).mean()))
+    # print(numpy.array(between_concat).mean())
+    print("mean " + str(numpy.array(within_mean).mean()/numpy.array(between_mean).mean()))
+    # print(numpy.array(between_mean).mean())
 
 partG()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # end

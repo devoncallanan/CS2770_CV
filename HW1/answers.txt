@@ -1,0 +1,56 @@
+HERE ARE MY ANSWERS
+
+"If you have a good image representation, should the average within-class or the average between-class distance be smaller?"
+If the representation is good then the average within class distance should be smaller than the average between class distance.
+
+"For which of the three representations is the within-between ratio smallest?"
+For many cases the within-between ratio was lowest for the feature bag of words however the texture mean also had passable results and performed best if the number of features was not well tuned to the number of means in the kmeans classification step.
+
+"Does the answer to this question depend on the value of k that you use?"
+Yes, the best performance for BOW was when k = 10. Aside from this, texture means performed consistently well.
+
+(avg features = 304)
+
+k = 5
+bow 0.7051209466999531
+concat 0.9861211124772897
+mean 0.6828645374645402
+k = 10
+bow 0.5567528644617807
+concat 0.9861211124772897
+mean 0.6828645374645402
+k = 50
+bow 0.8103600411888234
+concat 0.9861211124772897
+mean 0.6828645374645402
+
+"Does it depend on the number of keypoints you extract? (Try 500, 1000, 2000, 3000.)"
+Yes, it seems the more keypoints extracted, the better the performance of BOW.
+
+avg features = 68
+bow 0.6055553851657367
+concat 0.9861211124772897
+mean 0.6828645374645402
+
+avg features = 134
+bow 0.5972815817281651
+concat 0.9861211124772897
+mean 0.6828645374645402
+
+avg features = 304
+bow 0.5567528644617807
+concat 0.9861211124772897
+mean 0.6828645374645402
+
+
+"Which of the three types of descriptors that you used is the best one? How can you tell?"
+While the texture mean representation is consistent and relatively performant, the BOW has the best potential for within/between ratio reduction. It is hard to extrapolate for larger/different data sets but in this case because the ratio of the distances within each class compared to the ration between classes for the BOW representation, we can assume it is the best.
+
+"Is this what you expected? Why or why not?"
+This is somewhat what I expected, however, I was surprised at how competitive the texture mean representation was. I assumed that since the feature detection is more computationally intense and complicated that there must be some advantage. Otherwise whats the point.
+
+
+NOTES:
+tune feature threshold on line 177 and kmeans on line 334
+
+code has not been cleaned for readability. not specification was made in assignment
